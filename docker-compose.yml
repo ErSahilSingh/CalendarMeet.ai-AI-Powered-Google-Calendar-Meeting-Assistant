@@ -1,0 +1,74 @@
+version: '3.8'
+
+services:
+  # MongoDB Database for Users, Tokens, Meetings & Chat Logs
+  mongodb:
+    image: mongo:7.0
+    container_name: calendarmeet-mongo
+    restart: unless-stopped
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo_data:/data/db
+    networks:
+      - calendarmeet-network
+
+  # Redis for BullMQ Job Queue
+  redis:
+    image: redis:7-alpine
+    container_name: calendarmeet-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - calendarmeet-network
+
+  # Node/Express API Gateway & BullMQ Worker
+  server:
+    build:
+      context: ./server
+      dockerfile: Dockerfile
+    container_name: calendarmeet-server
+    restart: unless-stopped
+    ports:
+      - "5000:5000"
+    environment:
+      - PORT=5000
+      - NODE_ENV=production
+      - MONGO_URI=mongodb://mongodb:27017/calendarmeet
+      - REDIS_URL=redis://redis:6379
+      - CLIENT_URL=http://localhost:3000
+      - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID}
+      - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET}
+      - GOOGLE_REDIRECT_URI=${GOOGLE_REDIRECT_URI:-http://localhost:5000/api/auth/google/callback}
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - JWT_SECRET=${JWT_SECRET:-super_secret_jwt_key_calendar_meet_2026}
+    depends_on:
+      - mongodb
+      - redis
+    networks:
+      - calendarmeet-network
+
+  # React 18 Chat Application
+  client:
+    build:
+      context: ./client
+      dockerfile: Dockerfile
+    container_name: calendarmeet-client
+    restart: unless-stopped
+    ports:
+      - "3000:80"
+    depends_on:
+      - server
+    networks:
+      - calendarmeet-network
+
+volumes:
+  mongo_data:
+  redis_data:
+
+networks:
+  calendarmeet-network:
+    driver: bridge
